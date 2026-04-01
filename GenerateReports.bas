@@ -164,14 +164,18 @@ End Sub
 
 ' ============================================================
 ' Retourne le préfixe utilisé dans le nom de fichier pour un
-' établissement donné. Pour la plupart, c'est le code lui-même ;
-' pour Montaury, le fichier porte le préfixe "MA".
+' établissement et une année donnés.
+' Cas particulier Montaury :
+'   - 2026 (ANNEE_N)  : dossier Montaury, fichier préfixé "MA"
+'   - 2025 (ANNEE_N1) : dossier Montaury, fichier préfixé "Montaury"
+' Pour tous les autres établissements, le préfixe = code dossier.
 ' ============================================================
-Private Function ObtenirPrefixeFichier(ByVal codeEtab As String) As String
-    Select Case codeEtab
-        Case "Montaury": ObtenirPrefixeFichier = "MA"
-        Case Else:       ObtenirPrefixeFichier = codeEtab
-    End Select
+Private Function ObtenirPrefixeFichier(ByVal codeEtab As String, ByVal annee As Integer) As String
+    If codeEtab = "Montaury" And annee = ANNEE_N Then
+        ObtenirPrefixeFichier = "MA"
+    Else
+        ObtenirPrefixeFichier = codeEtab
+    End If
 End Function
 
 ' ============================================================
@@ -186,8 +190,9 @@ Private Function TrouverFichier(ByVal codeEtab As String, ByVal annee As Integer
     Dim cheminBase  As String
     Dim chemin      As String
 
-    ' Nom du fichier sans extension (le préfixe peut différer du code dossier, ex. Montaury → MA)
-    nomBase = ObtenirPrefixeFichier(codeEtab) & "-" & annee & MOIS & "-rps"
+    ' Nom du fichier sans extension (le préfixe peut différer du code dossier selon l'année,
+    ' ex. Montaury 2026 → "MA", Montaury 2025 → "Montaury")
+    nomBase = ObtenirPrefixeFichier(codeEtab, annee) & "-" & annee & MOIS & "-rps"
 
     ' Chemins à tester dans l'ordre de priorité
     Dim chemins(1) As String
