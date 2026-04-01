@@ -163,6 +163,18 @@ Private Sub AjouterEtab(ByRef liste() As String, ByRef idx As Integer, ByVal cod
 End Sub
 
 ' ============================================================
+' Retourne le préfixe utilisé dans le nom de fichier pour un
+' établissement donné. Pour la plupart, c'est le code lui-même ;
+' pour Montaury, le fichier porte le préfixe "MA".
+' ============================================================
+Private Function ObtenirPrefixeFichier(ByVal codeEtab As String) As String
+    Select Case codeEtab
+        Case "Montaury": ObtenirPrefixeFichier = "MA"
+        Case Else:       ObtenirPrefixeFichier = codeEtab
+    End Select
+End Function
+
+' ============================================================
 ' Recherche automatique du fichier d'un établissement pour
 ' une année donnée. Essaie d'abord le chemin principal (N),
 ' puis le chemin alternatif (N-1). Teste aussi avec/sans .txt.
@@ -174,8 +186,8 @@ Private Function TrouverFichier(ByVal codeEtab As String, ByVal annee As Integer
     Dim cheminBase  As String
     Dim chemin      As String
 
-    ' Nom du fichier sans extension
-    nomBase = codeEtab & "-" & annee & MOIS & "-rps"
+    ' Nom du fichier sans extension (le préfixe peut différer du code dossier, ex. Montaury → MA)
+    nomBase = ObtenirPrefixeFichier(codeEtab) & "-" & annee & MOIS & "-rps"
 
     ' Chemins à tester dans l'ordre de priorité
     Dim chemins(1) As String
