@@ -1,0 +1,417 @@
+let
+    Source = RAA_BaseV0,
+
+    /* =========================
+       FONCTIONS UTILITAIRES
+       ========================= */
+
+    NormTxt = (x as any) as nullable text =>
+        if x = null then null else Text.Trim(Text.From(x)),
+
+    NormCIM = (x as any) as nullable text =>
+        let
+            t = if x = null then null else Text.Upper(Text.Remove(Text.Trim(Text.From(x)), {" ", ".", "-", "/"}))
+        in
+            if t = null or t = "" then null else t,
+
+    /* =========================
+       PRÉPARATION DES TABLES DE RÉFÉRENCE
+       ========================= */
+
+    tbl_FormeActivite_REF_Clean = Table.TransformColumns(
+        tbl_FormeActivite_REF,
+        {
+            {"CodeForme", each NormTxt(_), type text},
+            {"LibelleForme", each NormTxt(_), type text}
+        }
+    ),
+
+    tbl_NatureActe_REF_Clean = Table.TransformColumns(
+        tbl_NatureActe_REF,
+        {
+            {"CodeNatureActe", each NormTxt(_), type text},
+            {"LibelleNatureActe", each NormTxt(_), type text}
+        }
+    ),
+
+    tbl_LieuActe_REF_Clean = Table.TransformColumns(
+        tbl_LieuActe_REF,
+        {
+            {"CodeLieuActe", each NormTxt(_), type text},
+            {"LibelleLieuActe", each NormTxt(_), type text}
+        }
+    ),
+
+    tbl_ModaliteRealisation_REF_Clean = Table.TransformColumns(
+        tbl_ModaliteRealisation_REF,
+        {
+            {"CodeModaliteRealisation", each NormTxt(_), type text},
+            {"LibelleModaliteRealisation", each NormTxt(_), type text}
+        }
+    ),
+
+    tbl_CategorieIntervenant_REF_Clean = Table.TransformColumns(
+        tbl_CategorieIntervenant_REF,
+        {
+            {"CodeCategorie", each NormTxt(_), type text},
+            {"LibelleCategorie", each NormTxt(_), type text}
+        }
+    ),
+
+    tbl_Sexe_Clean = Table.TransformColumns(
+        tbl_Sexe,
+        {
+            {"CodeSex", each NormTxt(_), type text},
+            {"Genre", each NormTxt(_), type text}
+        }
+    ),
+
+    tbl_Etablissements_REF_Clean = Table.TransformColumns(
+        tbl_Etablissements_REF,
+        {
+            {"Code_Ets", Text.Trim, type text},
+            {"Finess_géographique", each Text.Trim(Text.From(_)), type text},
+            {"Etablissement", Text.Trim, type text}
+        }
+    ),
+
+    tbl_Ets_Unique = Table.Distinct(tbl_Etablissements_REF_Clean, {"Finess_géographique"}),
+
+    tbl_Patients_REF_Clean = Table.TransformColumns(
+        tbl_Patients_REF,
+        {
+            {"IPP", each NormTxt(_), type text},
+            {"Nom", each NormTxt(_), type text},
+            {"Prenom", each NormTxt(_), type text}
+        }
+    ),
+
+    tbl_DepartementSource = Excel.CurrentWorkbook(){[Name="tbl_departement2"]}[Content],
+    tbl_Departement_Clean = Table.TransformColumns(
+        tbl_DepartementSource,
+        {
+            {"CodePostal", each NormTxt(_), type text},
+            {"LibellerCodePostal", each NormTxt(_), type text}
+        }
+    ),
+
+    /* =========================
+       NORMALISATION SOURCE (DA dynamiques)
+       ========================= */
+
+    ColsSource = Table.ColumnNames(Source),
+    DAColsSrc = List.Select(ColsSource, each Text.StartsWith(_, "DA")),
+
+    SourceNormFixed = Table.TransformColumns(
+        Source,
+        {
+            {"Finess géographique", each NormTxt(_), type text},
+            {"Forme d'activité", each NormTxt(_), type text},
+            {"Code postal", each if _ = null or NormTxt(_) = "" then null else NormTxt(_), type text},
+            {"Nature de l'acte", each NormTxt(_), type text},
+            {"Lieu de l'acte", each NormTxt(_), type text},
+            {"Modalité de réalisation de l'acte", each NormTxt(_), type text},
+            {"Catégorie professionnelle", each NormTxt(_), type text},
+            {"Sexe", each NormTxt(_), type text},
+            {"Diagnostic principal", each NormCIM(_), type text},
+            {"N° IPP", each NormTxt(_), type text}
+        }
+    ),
+
+    SourceNorm =
+        if List.Count(DAColsSrc) = 0 then
+            SourceNormFixed
+        else
+            Table.TransformColumns(
+                SourceNormFixed,
+                List.Transform(DAColsSrc, each {_, each NormCIM(_), type text})
+            ),
+
+    /* =========================
+       JOINTURES (référentiels simples)
+       ========================= */
+
+    JoinEts = Table.NestedJoin(
+        SourceNorm,
+        {"Finess géographique"},
+        tbl_Ets_Unique,
+        {"Finess_géographique"},
+        "Ets",
+        JoinKind.LeftOuter
+    ),
+    AvecEts = Table.ExpandTableColumn(JoinEts, "Ets", {"Etablissement"}, {"Etablissement"}),
+
+    JoinForme = Table.NestedJoin(
+        AvecEts,
+        {"Forme d'activité"},
+        tbl_FormeActivite_REF_Clean,
+        {"CodeForme"},
+        "Forme",
+        JoinKind.LeftOuter
+    ),
+    AvecForme = Table.ExpandTableColumn(
+        JoinForme,
+        "Forme",
+        {"CodeForme", "LibelleForme"},
+        {"CodeForme", "Forme d'activité (libellé)"}
+    ),
+
+    JoinPatients = Table.NestedJoin(
+        AvecForme,
+        {"N° IPP"},
+        tbl_Patients_REF_Clean,
+        {"IPP"},
+        "Patient",
+        JoinKind.LeftOuter
+    ),
+    AvecPatients = Table.ExpandTableColumn(JoinPatients, "Patient", {"Nom", "Prenom"}, {"Nom", "Prenom"}),
+
+    AvecCleDept = Table.AddColumn(
+        AvecPatients,
+        "Cle_Dept",
+        each if [#"Code postal"] = null then null else Text.Start([#"Code postal"], 2),
+        type text
+    ),
+    JoinDept = Table.NestedJoin(
+        AvecCleDept,
+        {"Cle_Dept"},
+        tbl_Departement_Clean,
+        {"CodePostal"},
+        "Dept",
+        JoinKind.LeftOuter
+    ),
+    AvecDept = Table.ExpandTableColumn(JoinDept, "Dept", {"LibellerCodePostal"}, {"Département (libellé)"}),
+    SansCleDept = Table.RemoveColumns(AvecDept, {"Cle_Dept"}),
+
+    JoinNature = Table.NestedJoin(
+        SansCleDept,
+        {"Nature de l'acte"},
+        tbl_NatureActe_REF_Clean,
+        {"CodeNatureActe"},
+        "NatureRef",
+        JoinKind.LeftOuter
+    ),
+    AvecNature = Table.ExpandTableColumn(JoinNature, "NatureRef", {"LibelleNatureActe"}, {"Nature de l'acte (libellé)"}),
+
+    AvecNombreActe = Table.AddColumn(
+        AvecNature,
+        "Nombre d'acte",
+        each 1,
+        Int64.Type
+    ),
+
+    JoinLieu = Table.NestedJoin(
+        AvecNombreActe,
+        {"Lieu de l'acte"},
+        tbl_LieuActe_REF_Clean,
+        {"CodeLieuActe"},
+        "LieuRef",
+        JoinKind.LeftOuter
+    ),
+    AvecLieu = Table.ExpandTableColumn(JoinLieu, "LieuRef", {"LibelleLieuActe"}, {"Lieu de l'acte (libellé)"}),
+
+    JoinModalite = Table.NestedJoin(
+        AvecLieu,
+        {"Modalité de réalisation de l'acte"},
+        tbl_ModaliteRealisation_REF_Clean,
+        {"CodeModaliteRealisation"},
+        "ModaliteRef",
+        JoinKind.LeftOuter
+    ),
+    AvecModalite = Table.ExpandTableColumn(JoinModalite, "ModaliteRef", {"LibelleModaliteRealisation"}, {"Modalité de réalisation (libellé)"}),
+
+    JoinCategorie = Table.NestedJoin(
+        AvecModalite,
+        {"Catégorie professionnelle"},
+        tbl_CategorieIntervenant_REF_Clean,
+        {"CodeCategorie"},
+        "CategorieRef",
+        JoinKind.LeftOuter
+    ),
+    AvecCategorie = Table.ExpandTableColumn(JoinCategorie, "CategorieRef", {"LibelleCategorie"}, {"Catégorie professionnelle (libellé)"}),
+
+    /* =========================
+       JOINTURES CIM10 (XML) : DP + tous les DA*
+       ========================= */
+
+    ColsAvantCIM = Table.ColumnNames(AvecCategorie),
+    DACols = List.Select(ColsAvantCIM, each Text.StartsWith(_, "DA")),
+
+    AvecClesCIM =
+        List.Accumulate(
+            DACols,
+            Table.AddColumn(AvecCategorie, "Cle_DP", each NormCIM([#"Diagnostic principal"]), type text),
+            (state as table, daCol as text) as table =>
+                Table.AddColumn(state, "Cle_" & daCol, each NormCIM(Record.FieldOrDefault(_, daCol, null)), type text)
+        ),
+
+    RefCIM = tbl_CIM10_XML_REF,
+
+    JoinDP_CIM = Table.NestedJoin(AvecClesCIM, {"Cle_DP"}, RefCIM, {"CleCIM_SansPoints"}, "DP_Ref", JoinKind.LeftOuter),
+    AvecDP = Table.ExpandTableColumn(JoinDP_CIM, "DP_Ref", {"LibelleCIM"}, {"Diagnostic principal (libellé)"}),
+
+    AvecDALibelles =
+        List.Accumulate(
+            DACols,
+            AvecDP,
+            (state as table, daCol as text) as table =>
+                let
+                    joined = Table.NestedJoin(state, {"Cle_" & daCol}, RefCIM, {"CleCIM_SansPoints"}, daCol & "_Ref", JoinKind.LeftOuter),
+                    expanded = Table.ExpandTableColumn(joined, daCol & "_Ref", {"LibelleCIM"}, {daCol & " (libellé)"})
+                in
+                    expanded
+        ),
+
+    KeyColsToRemove = List.Combine({{"Cle_DP"}, List.Transform(DACols, each "Cle_" & _)}),
+    SansClesCIM = Table.RemoveColumns(AvecDALibelles, List.Intersect({Table.ColumnNames(AvecDALibelles), KeyColsToRemove})),
+
+    /* =========================
+       Sexe libellé
+       ========================= */
+
+    JoinSexe = Table.NestedJoin(SansClesCIM, {"Sexe"}, tbl_Sexe_Clean, {"CodeSex"}, "SexeRef", JoinKind.LeftOuter),
+    AvecSexe = Table.ExpandTableColumn(JoinSexe, "SexeRef", {"Genre"}, {"Sexe_Libellé"}),
+
+    /* =========================
+       CALCUL DE L'ÂGE
+       ========================= */
+
+    AjoutAge = Table.AddColumn(
+        AvecSexe,
+        "Âge",
+        each
+            if [#"Date naissance"] = null or [#"Date de l'acte"] = null then null
+            else
+                let
+                    dn = [#"Date naissance"],
+                    de = [#"Date de l'acte"],
+                    age =
+                        Date.Year(de) - Date.Year(dn)
+                        - (if Date.Month(de) < Date.Month(dn) or (Date.Month(de) = Date.Month(dn) and Date.Day(de) < Date.Day(dn)) then 1 else 0)
+                in
+                    age,
+        Int64.Type
+    ),
+
+    AvecClasseAge = Table.AddColumn(
+        AjoutAge,
+        "Classe d'âge",
+        each
+            if [Âge] = null then null
+            else if [Âge] < 3 then "0-2 ans (Nourrisson)"
+            else if [Âge] < 6 then "3-5 ans (Maternelle)"
+            else if [Âge] < 10 then "6-9 ans (Primaire début)"
+            else if [Âge] < 15 then "10-14 ans (Collège)"
+            else if [Âge] < 18 then "15-17 ans (Lycée)"
+            else if [Âge] < 25 then "18-24 ans (Jeunes adultes)"
+            else if [Âge] < 35 then "25-34 ans (Adultes)"
+            else if [Âge] < 50 then "35-49 ans (Adultes confirmés)"
+            else if [Âge] < 65 then "50-64 ans (Adultes seniors)"
+            else "65+ ans (Très seniors)"
+        , type text
+    ),
+
+    /* =========================
+       JOINTURE CIM10 COMPLÈTE (Chapitre) sur le DP
+       ========================= */
+
+    AvecCleDP_Full = Table.AddColumn(
+        AvecClasseAge,
+        "DP_CleCIM_SansPoints",
+        each NormCIM([#"Diagnostic principal"]),
+        type text
+    ),
+
+    JoinDP_Full = Table.NestedJoin(
+        AvecCleDP_Full,
+        {"DP_CleCIM_SansPoints"},
+        tbl_CIM10_XML_REF_FULL,
+        {"CleCIM_SansPoints"},
+        "CIM10_REF_DP",
+        JoinKind.LeftOuter
+    ),
+
+    AvecChapitreDP = Table.ExpandTableColumn(
+        JoinDP_Full,
+        "CIM10_REF_DP",
+        {"CodeChapitre", "LibelleChapitre"},
+        {"DP_CodeChapitre", "DP_LibelleChapitre"}
+    ),
+
+    SansCleDP_Full = Table.RemoveColumns(AvecChapitreDP, {"DP_CleCIM_SansPoints"}),
+
+    /* =========================
+       JOINTURES CIM10 COMPLÈTES (Chapitre) sur DA*
+       ========================= */
+
+    AvecDAComplets =
+        List.Accumulate(
+            DACols,
+            SansCleDP_Full,
+            (state as table, daCol as text) as table =>
+                let
+                    cleCol = daCol & "_CleCIM_SansPoints",
+                    codeChapCol = daCol & "_CodeChapitre",
+                    libChapCol = daCol & "_LibelleChapitre",
+                    avecCle = Table.AddColumn(
+                        state,
+                        cleCol,
+                        each NormCIM(Record.FieldOrDefault(_, daCol, null)),
+                        type text
+                    ),
+                    joined = Table.NestedJoin(
+                        avecCle,
+                        {cleCol},
+                        tbl_CIM10_XML_REF_FULL,
+                        {"CleCIM_SansPoints"},
+                        daCol & "_REF_FULL",
+                        JoinKind.LeftOuter
+                    ),
+                    expanded = Table.ExpandTableColumn(
+                        joined,
+                        daCol & "_REF_FULL",
+                        {"CodeChapitre", "LibelleChapitre"},
+                        {codeChapCol, libChapCol}
+                    ),
+                    sansCleTmp = Table.RemoveColumns(expanded, {cleCol})
+                in
+                    sansCleTmp
+        ),
+
+    /* =========================
+       REORDONNANCEMENT FINAL
+       ========================= */
+
+    ColsFinalesSouhaitees = {
+        "Index", "Contrôle Qualité",
+        "Finess juridique", "Finess géographique", "Etablissement",
+        "N° Format", "N° IPP", "Nom", "Prenom",
+        "Date naissance", "Âge", "Classe d'âge",
+        "Sexe", "Sexe_Libellé",
+        "Code postal", "Département (libellé)",
+        "Forme d'activité", "CodeForme", "Forme d'activité (libellé)",
+        "N° UM", "N° Secteur",
+        "Mode légal soins",
+        "Date de l'acte",
+        "Nature de l'acte", "Nature de l'acte (libellé)",
+        "Nombre d'acte",
+        "Lieu de l'acte", "Lieu de l'acte (libellé)",
+        "Modalité de réalisation de l'acte", "Modalité de réalisation (libellé)",
+        "Catégorie professionnelle", "Catégorie professionnelle (libellé)",
+        "Nombre d'intervenants",
+        "Indicateur activité libérale",
+        "Diagnostic principal",
+        "Diagnostic principal (libellé)",
+        "DP_CodeChapitre",
+        "DP_LibelleChapitre",
+        "Nombre de diagnostics associés"
+    },
+
+    ColonnesExistantes = Table.ColumnNames(AvecDAComplets),
+    ColonnesReordonnees = List.Intersect({ColsFinalesSouhaitees, ColonnesExistantes}),
+    ColonnesRestantes = List.Difference(ColonnesExistantes, ColonnesReordonnees),
+
+    Final = Table.ReorderColumns(AvecDAComplets, ColonnesReordonnees & ColonnesRestantes)
+
+in
+    Final
