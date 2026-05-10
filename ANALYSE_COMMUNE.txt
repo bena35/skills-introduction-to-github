@@ -33,7 +33,8 @@ let
             "N° UM",
             "N° Secteur",
             "Mode légal soins",
-            "Date de l'acte"
+            "Date de l'acte",
+            "Nombre d'acte"
         },
         MissingField.UseNull
     ),
@@ -63,7 +64,15 @@ let
             "Date début séquence", each null, type date),
         "Date fin séquence", each null, type date),
 
-    RAA_Tagué = Table.AddColumn(RAA_Avec_Dates, "Source", each "RAA", type text),
+    RAA_Avec_Mesures = Table.AddColumn(
+        Table.AddColumn(
+            Table.AddColumn(
+                RAA_Avec_Dates,
+                "Nombre de jours", each null, Int64.Type),
+            "Nombre de demi-journées", each null, Int64.Type),
+        "Total en journées", each null, type number),
+
+    RAA_Tagué = Table.AddColumn(RAA_Avec_Mesures, "Source", each "RAA", type text),
 
 
     // ════════════════════════════════════════════════════════════════════════
@@ -99,7 +108,10 @@ let
             "Date entrée séjour",
             "Date sortie séjour",
             "Date début séquence",
-            "Date fin séquence"
+            "Date fin séquence",
+            "Nombre de jours",
+            "Nombre de demi-journées",
+            "Total en journées"
         },
         MissingField.UseNull
     ),
@@ -125,10 +137,11 @@ let
         {{"Année_calc", "Année"}}
     ),
 
-    // Ajout de la colonne absente de RPS (valeur nulle)
+    // Ajout des colonnes absentes de RPS (valeurs nulles)
     RPS_Avec_Acte = Table.AddColumn(RPS_Avec_Année, "Date de l'acte", each null, type date),
+    RPS_Avec_Acte_Nombre = Table.AddColumn(RPS_Avec_Acte, "Nombre d'acte", each null, Int64.Type),
 
-    RPS_Tagué = Table.AddColumn(RPS_Avec_Acte, "Source", each "RPS", type text),
+    RPS_Tagué = Table.AddColumn(RPS_Avec_Acte_Nombre, "Source", each "RPS", type text),
 
 
     // ─── Combinaison des deux tables (UNION ALL) ──────────────────────────────
@@ -158,10 +171,14 @@ let
         {"N° Secteur", type text},
         {"Mode légal soins", type text},
         {"Date de l'acte", type date},
+        {"Nombre d'acte", Int64.Type},
         {"Date entrée séjour", type date},
         {"Date sortie séjour", type date},
         {"Date début séquence", type date},
         {"Date fin séquence", type date},
+        {"Nombre de jours", Int64.Type},
+        {"Nombre de demi-journées", Int64.Type},
+        {"Total en journées", type number},
         {"Source", type text}
     }),
 
@@ -189,10 +206,14 @@ let
         "N° Secteur",
         "Mode légal soins",
         "Date de l'acte",
+        "Nombre d'acte",
         "Date entrée séjour",
         "Date sortie séjour",
         "Date début séquence",
         "Date fin séquence",
+        "Nombre de jours",
+        "Nombre de demi-journées",
+        "Total en journées",
         "Source"
     })
 in
