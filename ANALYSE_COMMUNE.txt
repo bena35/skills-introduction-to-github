@@ -1,0 +1,199 @@
+let
+    // ─── Chargement des tables sources ───────────────────────────────────────
+    RAA = Excel.CurrentWorkbook(){[Name="RAA_ANALYSE"]}[Content],
+    RPS = Excel.CurrentWorkbook(){[Name="RPS_ANALYSE"]}[Content],
+
+    // ════════════════════════════════════════════════════════════════════════
+    // TABLE RAA
+    // Contient : "Date de l'acte"
+    // Ne contient PAS : "Date entrée séjour", "Date sortie séjour",
+    //                   "Date début séquence", "Date fin séquence"
+    // ════════════════════════════════════════════════════════════════════════
+    RAA_Sélection = Table.SelectColumns(
+        RAA,
+        {
+            "Année",
+            "Finess juridique",
+            "Finess géographique",
+            "Etablissement",
+            "N° Format",
+            "N° IPP",
+            "Nom",
+            "Prenom",
+            "Date naissance",
+            "Âge",
+            "Classe d'âge",
+            "Sexe",
+            "Sexe_Libellé",
+            "Code postal",
+            "Département (libellé)",
+            "Forme d'activité",
+            "CodeForme",
+            "Forme d'activité (libellé)",
+            "N° UM",
+            "N° Secteur",
+            "Mode légal soins",
+            "Date de l'acte"
+        },
+        MissingField.UseNull
+    ),
+
+    // Secours Année RAA : à partir de Date de l'acte si Année absente/null
+    RAA_Année_Secours = Table.AddColumn(
+        RAA_Sélection,
+        "Année_calc",
+        each
+            if [Année] <> null then [Année]
+            else if [#"Date de l'acte"] <> null then Date.Year([#"Date de l'acte"])
+            else null,
+        Int64.Type
+    ),
+    RAA_Avec_Année = Table.RenameColumns(
+        Table.RemoveColumns(RAA_Année_Secours, {"Année"}),
+        {{"Année_calc", "Année"}}
+    ),
+
+    // Ajout des 4 colonnes absentes de RAA (valeurs nulles)
+    RAA_Avec_Dates = Table.AddColumn(
+        Table.AddColumn(
+            Table.AddColumn(
+                Table.AddColumn(RAA_Avec_Année,
+                    "Date entrée séjour", each null, type date),
+                "Date sortie séjour", each null, type date),
+            "Date début séquence", each null, type date),
+        "Date fin séquence", each null, type date),
+
+    RAA_Tagué = Table.AddColumn(RAA_Avec_Dates, "Source", each "RAA", type text),
+
+
+    // ════════════════════════════════════════════════════════════════════════
+    // TABLE RPS
+    // Contient : "Date entrée séjour", "Date sortie séjour",
+    //            "Date début séquence", "Date fin séquence"
+    // Ne contient PAS : "Date de l'acte"
+    // ════════════════════════════════════════════════════════════════════════
+    RPS_Sélection = Table.SelectColumns(
+        RPS,
+        {
+            "Année",
+            "Finess juridique",
+            "Finess géographique",
+            "Etablissement",
+            "N° Format",
+            "N°IPP",
+            "Nom",
+            "Prenom",
+            "Date naissance",
+            "Âge à l'entrée",
+            "Classe d'âge",
+            "Sexe",
+            "Sexe_Libellé",
+            "Code postal",
+            "Département (libellé)",
+            "Forme d'activité",
+            "CodeForme",
+            "Forme d'activité (libellé)",
+            "N° UM",
+            "N° Secteur",
+            "Mode légal soins",
+            "Date entrée séjour",
+            "Date sortie séjour",
+            "Date début séquence",
+            "Date fin séquence"
+        },
+        MissingField.UseNull
+    ),
+
+    // Harmonisation des noms RPS → RAA
+    RPS_Renommé = Table.RenameColumns(RPS_Sélection, {
+        {"N°IPP", "N° IPP"},
+        {"Âge à l'entrée", "Âge"}
+    }),
+
+    // Secours Année RPS : à partir de Date fin séquence si Année absente/null
+    RPS_Année_Secours = Table.AddColumn(
+        RPS_Renommé,
+        "Année_calc",
+        each
+            if [Année] <> null then [Année]
+            else if [#"Date fin séquence"] <> null then Date.Year([#"Date fin séquence"])
+            else null,
+        Int64.Type
+    ),
+    RPS_Avec_Année = Table.RenameColumns(
+        Table.RemoveColumns(RPS_Année_Secours, {"Année"}),
+        {{"Année_calc", "Année"}}
+    ),
+
+    // Ajout de la colonne absente de RPS (valeur nulle)
+    RPS_Avec_Acte = Table.AddColumn(RPS_Avec_Année, "Date de l'acte", each null, type date),
+
+    RPS_Tagué = Table.AddColumn(RPS_Avec_Acte, "Source", each "RPS", type text),
+
+
+    // ─── Combinaison des deux tables (UNION ALL) ──────────────────────────────
+    ANALYSE_COMMUNE = Table.Combine({RAA_Tagué, RPS_Tagué}),
+
+    // ─── Typage final ─────────────────────────────────────────────────────────
+    RésultatTypé = Table.TransformColumnTypes(ANALYSE_COMMUNE, {
+        {"Année", Int64.Type},
+        {"Finess juridique", type text},
+        {"Finess géographique", type text},
+        {"Etablissement", type text},
+        {"N° Format", type text},
+        {"N° IPP", type text},
+        {"Nom", type text},
+        {"Prenom", type text},
+        {"Date naissance", type date},
+        {"Âge", Int64.Type},
+        {"Classe d'âge", type text},
+        {"Sexe", type text},
+        {"Sexe_Libellé", type text},
+        {"Code postal", type text},
+        {"Département (libellé)", type text},
+        {"Forme d'activité", type text},
+        {"CodeForme", type text},
+        {"Forme d'activité (libellé)", type text},
+        {"N° UM", type text},
+        {"N° Secteur", type text},
+        {"Mode légal soins", type text},
+        {"Date de l'acte", type date},
+        {"Date entrée séjour", type date},
+        {"Date sortie séjour", type date},
+        {"Date début séquence", type date},
+        {"Date fin séquence", type date},
+        {"Source", type text}
+    }),
+
+    // ─── Ordre final (facultatif) ────────────────────────────────────────────
+    Résultat = Table.ReorderColumns(RésultatTypé, {
+        "Année",
+        "Finess juridique",
+        "Finess géographique",
+        "Etablissement",
+        "N° Format",
+        "N° IPP",
+        "Nom",
+        "Prenom",
+        "Date naissance",
+        "Âge",
+        "Classe d'âge",
+        "Sexe",
+        "Sexe_Libellé",
+        "Code postal",
+        "Département (libellé)",
+        "Forme d'activité",
+        "CodeForme",
+        "Forme d'activité (libellé)",
+        "N° UM",
+        "N° Secteur",
+        "Mode légal soins",
+        "Date de l'acte",
+        "Date entrée séjour",
+        "Date sortie séjour",
+        "Date début séquence",
+        "Date fin séquence",
+        "Source"
+    })
+in
+    Résultat
