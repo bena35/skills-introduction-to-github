@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validation/correction VID-HOSP à largeur fixe selon formats_psy_2026_0.xlsx."""
+"""Validation/correction VID-HOSP à largeur fixe selon un classeur de spécifications."""
 
 from __future__ import annotations
 
@@ -127,6 +127,9 @@ def load_vid_hosp_spec(format_xlsx: Path, sheet_name: str) -> List[FieldSpec]:
 
 
 def total_width(specs: List[FieldSpec]) -> int:
+    """Return expected fixed-width record length from field definitions."""
+    if not specs:
+        raise ValueError("Aucune spécification de champ fournie.")
     return max(f.end for f in specs)
 
 
@@ -205,6 +208,8 @@ def convert_xlsx_to_fixed(
 ) -> None:
     """Convert an XLSX dataset to VID-HOSP fixed-width TXT using the loaded specs."""
     wb = load_workbook(src_xlsx, data_only=True)
+    if not wb.sheetnames:
+        raise ValueError("Le fichier source XLSX ne contient aucun onglet.")
     ws = wb[source_sheet] if source_sheet and source_sheet in wb.sheetnames else wb[wb.sheetnames[0]]
 
     rows = ws.iter_rows(values_only=True)
