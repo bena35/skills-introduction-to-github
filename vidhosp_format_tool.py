@@ -30,6 +30,7 @@ class FieldSpec:
 
 
 def normalize(text: str) -> str:
+    """Normalize text for stable header matching across accents and punctuation."""
     text = (text or "").strip().lower()
     replacements = {
         "é": "e",
@@ -58,6 +59,7 @@ def normalize(text: str) -> str:
 
 
 def format_cell_value(value) -> str:
+    """Convert an Excel cell value to a one-line string representation."""
     if value is None:
         return ""
     if isinstance(value, (dt.datetime, dt.date)):
@@ -70,6 +72,7 @@ def format_cell_value(value) -> str:
 
 
 def fit_width(value: str, width: int) -> str:
+    """Return value truncated or right-padded with spaces to exactly `width` chars."""
     value = value or ""
     if len(value) > width:
         return value[:width]
@@ -77,6 +80,7 @@ def fit_width(value: str, width: int) -> str:
 
 
 def load_vid_hosp_spec(format_xlsx: Path, sheet_name: str) -> List[FieldSpec]:
+    """Load fixed-width field specifications from the VID-HOSP format sheet."""
     wb = load_workbook(format_xlsx, data_only=True)
     if sheet_name not in wb.sheetnames:
         raise ValueError(f"Onglet introuvable dans le fichier format: {sheet_name}")
@@ -127,6 +131,7 @@ def total_width(specs: List[FieldSpec]) -> int:
 
 
 def build_line_from_fixed(raw_line: str, specs: List[FieldSpec]) -> str:
+    """Rebuild one fixed-width line according to field start/end definitions."""
     out = []
     for f in specs:
         start_idx = f.start - 1
@@ -137,6 +142,7 @@ def build_line_from_fixed(raw_line: str, specs: List[FieldSpec]) -> str:
 
 
 def fix_txt_lines(specs: List[FieldSpec], src_txt: Path, dst_txt: Path, report_csv: Path | None) -> None:
+    """Fix each input TXT line to the expected fixed-width layout and write a report."""
     expected_len = total_width(specs)
     reports = []
 
@@ -160,6 +166,7 @@ def fix_txt_lines(specs: List[FieldSpec], src_txt: Path, dst_txt: Path, report_c
 
 
 def build_header_map(header_cells: Iterable) -> dict[str, int]:
+    """Map normalized XLSX header names to their column index."""
     mapping = {}
     for i, h in enumerate(header_cells):
         key = normalize(str(h) if h is not None else "")
@@ -169,6 +176,7 @@ def build_header_map(header_cells: Iterable) -> dict[str, int]:
 
 
 def build_line_from_row(row: tuple, specs: List[FieldSpec], header_map: dict[str, int], strict_required: bool) -> tuple[str, list[str]]:
+    """Build one fixed-width line from an XLSX row and return validation issues."""
     parts: List[str] = []
     issues: list[str] = []
 
@@ -195,6 +203,7 @@ def convert_xlsx_to_fixed(
     report_csv: Path | None,
     strict_required: bool,
 ) -> None:
+    """Convert an XLSX dataset to VID-HOSP fixed-width TXT using the loaded specs."""
     wb = load_workbook(src_xlsx, data_only=True)
     ws = wb[source_sheet] if source_sheet and source_sheet in wb.sheetnames else wb[wb.sheetnames[0]]
 
@@ -265,6 +274,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    """CLI entry point."""
     args = parse_args()
 
     format_xlsx = Path(args.format_xlsx).expanduser().resolve()
